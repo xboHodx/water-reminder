@@ -6,6 +6,22 @@ export function filterImageFiles(files: string[], extensions: string[]) {
   return files.filter((file) => allowed.has(extname(file).toLowerCase()))
 }
 
+export function getImageMimeType(file: string) {
+  switch (extname(file).toLowerCase()) {
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
+    case '.png':
+      return 'image/png'
+    case '.gif':
+      return 'image/gif'
+    case '.webp':
+      return 'image/webp'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
 export async function collectImageFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true })
   const nested = await Promise.all(entries.map(async (entry) => {

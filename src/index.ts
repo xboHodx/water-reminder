@@ -1,11 +1,10 @@
 import { Context, Schema, h } from 'koishi'
-import { access } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 import { DEFAULT_IMAGE_EXTENSIONS } from './constants'
 import { expandDailyTimes, normalizeExtensions, normalizeIntervalMinutes } from './config'
-import { collectImageFiles, filterImageFiles } from './images'
+import { collectImageFiles, filterImageFiles, getImageMimeType } from './images'
 import { buildMessagePool, pickMessage } from './messages'
 import { buildCronJobs, buildPayload, selectReminderBot, shouldSkipByDedupe } from './runtime'
 import type { Config as WaterReminderConfig } from './types'
@@ -65,9 +64,10 @@ function buildWindowKey(now: number, windowSeconds: number) {
   return String(Math.floor(now / size))
 }
 
-function buildMessageContent(payload: ReturnType<typeof buildPayload>) {
+async function buildMessageContent(payload: ReturnType<typeof buildPayload>) {
   if (!payload.imagePath) return payload.text
-  return h('message', h.image(pathToFileURL(payload.imagePath).href), payload.text)
+  const buffer = await readFile(payload.imagePath)
+  return h('message', h.image(buffer, getImageMimeType(payload.imagePath)), payload.text)
 }
 
 export function apply(ctx: Context, config: WaterReminderConfig) {
@@ -123,10 +123,9 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
       ? imageFiles[Math.floor(Math.random() * imageFiles.length)]
       : undefined
     const payload = buildPayload(text, imagePath)
-    const content = buildMessageContent(payload)
-
     for (const groupId of groups) {
       try {
+        const content = await buildMessageContent(payload)
         await bot.sendMessage(groupId, content)
       } catch (error) {
         logger.warn(`failed to send ${triggerLabel} reminder to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
