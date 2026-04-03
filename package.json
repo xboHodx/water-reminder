@@ -1,0 +1,28 @@
+{
+  "name": "koishi-plugin-water-reminder",
+  "description": "QQ 群喝水提醒插件，支持固定时刻、Cron、间隔提醒与本地随机图片",
+  "version": "0.1.0",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "qq",
+    "water"
+  ],
+  "koishi": {
+    "description": {
+      "zh": "QQ 群喝水提醒插件",
+      "en": "Water reminder plugin for QQ groups"
+    }
+  },
+  "peerDependencies": {
+    "koishi": "^4.18.11"
+  }
+}
