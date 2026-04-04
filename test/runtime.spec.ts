@@ -1,9 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildCronJobs, buildPayload, selectReminderBot, shouldSkipByDedupe } from '../src/runtime'
+import {
+  buildCronJobs,
+  buildEmojiLikeHeaders,
+  buildEmojiLikeRequest,
+  buildPayload,
+  selectReminderBot,
+  shouldApplyEmojiLike,
+  shouldSkipByDedupe,
+} from '../src/runtime'
 
-test('buildCronJobs merges dailyTimes-derived cron values and raw cron expressions', () => {
+test('buildCronJobs merges cron expressions with raw cron expressions', () => {
   assert.deepEqual(
     buildCronJobs(['30 9 * * *'], ['0 12 * * *']),
     ['30 9 * * *', '0 12 * * *'],
@@ -26,7 +34,67 @@ test('buildPayload includes imagePath only when an image is available', () => {
   })
 })
 
-test('selectReminderBot prefers qq but falls back to another active bot', () => {
+test('buildEmojiLikeRequest builds a OneBot payload for one emoji id', () => {
+  assert.deepEqual(buildEmojiLikeRequest('12345', 76), {
+    message_id: 12345,
+    emoji_id: 76,
+  })
+})
+
+test('buildEmojiLikeRequest throws for invalid message ids', () => {
+  assert.throws(() => buildEmojiLikeRequest('abc', 76), /invalid emoji-like message id/i)
+})
+
+test('buildEmojiLikeHeaders adds bearer token only when configured', () => {
+  assert.deepEqual(buildEmojiLikeHeaders(), {
+    'Content-Type': 'application/json',
+  })
+  assert.deepEqual(buildEmojiLikeHeaders('secret'), {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer secret',
+  })
+})
+
+test('shouldApplyEmojiLike returns true when all emoji-like conditions are met', () => {
+  assert.equal(
+    shouldApplyEmojiLike({
+      enabled: true,
+      onebotUrl: 'http://127.0.0.1:3000',
+      emojiIds: [76],
+      messageId: '12345',
+    }),
+    true,
+  )
+
+  assert.equal(
+    shouldApplyEmojiLike({
+      enabled: false,
+      onebotUrl: 'http://127.0.0.1:3000',
+      emojiIds: [76],
+      messageId: '12345',
+    }),
+    false,
+  )
+})
+
+test('shouldApplyEmojiLike returns false when message id is missing', () => {
+  assert.equal(shouldApplyEmojiLike({
+    enabled: true,
+    onebotUrl: 'http://127.0.0.1:3000',
+    emojiIds: [76],
+  }), false)
+})
+
+test('shouldApplyEmojiLike returns false when message id is non-numeric', () => {
+  assert.equal(shouldApplyEmojiLike({
+    enabled: true,
+    onebotUrl: 'http://127.0.0.1:3000',
+    emojiIds: [76],
+    messageId: 'abc',
+  }), false)
+})
+
+test('selectReminderBot falls back to another active bot', () => {
   const qqBot = {
     platform: 'qq',
     isActive: false,
