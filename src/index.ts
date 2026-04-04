@@ -6,7 +6,17 @@ import { DEFAULT_IMAGE_EXTENSIONS } from './constants'
 import { expandDailyTimes, normalizeExtensions, normalizeIntervalMinutes } from './config'
 import { collectImageFiles, filterImageFiles, getImageMimeType } from './images'
 import { buildMessagePool, pickMessage } from './messages'
-import { buildCronJobs, buildPayload, selectReminderBot, shouldSkipByDedupe } from './runtime'
+import {
+  buildCronJobs,
+  buildEmojiLikeHeaders,
+  buildEmojiLikeRequest,
+  buildPayload,
+  extractMessageIds,
+  getEmojiLikeFailure,
+  selectReminderBot,
+  shouldApplyEmojiLike,
+  shouldSkipByDedupe,
+} from './runtime'
 import type { Config as WaterReminderConfig } from './types'
 
 type CronContext = Context & {
@@ -49,6 +59,23 @@ export const Config: Schema<WaterReminderConfig> = Schema.object({
       .description('允许发送的图片扩展名。')
       .default(DEFAULT_IMAGE_EXTENSIONS),
   }).description('随机图片配置。'),
+  emojiLike: Schema.object({
+    enabled: Schema.boolean()
+      .description('是否在提醒消息发送后自动贴表情。')
+      .default(false),
+    onebotUrl: Schema.string()
+      .description('OneBot HTTP 地址，例如 http://127.0.0.1:3000。')
+      .default('http://127.0.0.1:3000'),
+    onebotToken: Schema.string()
+      .description('OneBot HTTP Token。')
+      .default(''),
+    emojiIds: Schema.array(Schema.number().required())
+      .description('要贴上的 emoji_id 列表。')
+      .default([]),
+    delayMs: Schema.number()
+      .description('发送成功后等待多少毫秒再开始贴表情。')
+      .default(300),
+  }).description('消息贴表情配置。'),
   behavior: Schema.object({
     sendOnStartup: Schema.boolean()
       .description('启动后是否立即发送一次提醒。')
@@ -124,11 +151,55 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
       : undefined
     const payload = buildPayload(text, imagePath)
     for (const groupId of groups) {
+      let sendResult: unknown
+
       try {
         const content = await buildMessageContent(payload)
-        await bot.sendMessage(groupId, content)
+        sendResult = await bot.sendMessage(groupId, content)
       } catch (error) {
         logger.warn(`failed to send ${triggerLabel} reminder to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
+        continue
+      }
+
+      const messageIds = extractMessageIds(sendResult).filter((messageId) => shouldApplyEmojiLike({
+        enabled: config.emojiLike.enabled,
+        onebotUrl: config.emojiLike.onebotUrl,
+        emojiIds: config.emojiLike.emojiIds,
+        messageId,
+      }))
+
+      if (!messageIds.length) {
+        continue
+      }
+
+      try {
+        if (config.emojiLike.delayMs > 0) {
+          await ctx.sleep(config.emojiLike.delayMs)
+        }
+
+        const onebotUrl = `${config.emojiLike.onebotUrl.replace(/\/$/, '')}/set_msg_emoji_like`
+        const headers = buildEmojiLikeHeaders(config.emojiLike.onebotToken || undefined)
+        for (const messageId of messageIds) {
+          for (const emojiId of config.emojiLike.emojiIds) {
+            try {
+              const response = await ctx.http.post(
+                onebotUrl,
+                buildEmojiLikeRequest(messageId, emojiId),
+                { headers },
+              )
+              const failure = getEmojiLikeFailure(response)
+              if (failure) {
+                logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${failure}`)
+                continue
+              }
+              logger.info(`applied emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}`)
+            } catch (error) {
+              logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`failed to apply emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
   }

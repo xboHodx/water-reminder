@@ -26,6 +26,103 @@ export function buildPayload(text: string, imagePath?: string): ReminderPayload 
   return imagePath ? { text, imagePath } : { text }
 }
 
+function parseEmojiLikeMessageId(messageId: string) {
+  const trimmed = messageId.trim()
+  return /^\d+$/.test(trimmed) ? trimmed : undefined
+}
+
+function collectMessageIds(result: unknown, output: string[]) {
+  if (result == null) return
+
+  if (typeof result === 'string' || typeof result === 'number' || typeof result === 'bigint') {
+    const messageId = String(result).trim()
+    if (messageId) output.push(messageId)
+    return
+  }
+
+  if (Array.isArray(result)) {
+    for (const item of result) {
+      collectMessageIds(item, output)
+    }
+    return
+  }
+
+  if (typeof result === 'object') {
+    const record = result as Record<string, unknown>
+    const candidates = [
+      record.messageId,
+      record.message_id,
+      record.id,
+      record.data,
+    ]
+    for (const candidate of candidates) {
+      collectMessageIds(candidate, output)
+    }
+  }
+}
+
+export function extractMessageIds(result: unknown) {
+  const output: string[] = []
+  collectMessageIds(result, output)
+  return [...new Set(output)]
+}
+
+export function buildEmojiLikeRequest(messageId: string, emojiId: number) {
+  const normalizedMessageId = parseEmojiLikeMessageId(messageId)
+  if (!normalizedMessageId) {
+    throw new Error('Invalid emoji-like message id')
+  }
+  return {
+    message_id: Number(normalizedMessageId),
+    emoji_id: emojiId,
+  }
+}
+
+export function buildEmojiLikeHeaders(token?: string) {
+  return token
+    ? {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      }
+    : {
+        'Content-Type': 'application/json',
+      }
+}
+
+export function shouldApplyEmojiLike(input: {
+  enabled: boolean
+  onebotUrl: string
+  emojiIds: number[]
+  messageId?: string
+}) {
+  const normalizedMessageId = input.messageId && parseEmojiLikeMessageId(input.messageId)
+  return input.enabled
+    && !!input.onebotUrl.trim()
+    && input.emojiIds.length > 0
+    && !!normalizedMessageId
+}
+
+export function getEmojiLikeFailure(response: unknown) {
+  if (!response || typeof response !== 'object') return
+
+  const record = response as Record<string, unknown>
+  const wording = [record.wording, record.message, record.msg]
+    .find((item) => typeof item === 'string' && item.trim()) as string | undefined
+  const suffix = wording ? `: ${wording}` : ''
+
+  if (typeof record.retcode === 'number' && record.retcode !== 0) {
+    return `retcode ${record.retcode}${suffix}`
+  }
+
+  if (typeof record.retcode === 'string' && record.retcode !== '0') {
+    return `retcode ${record.retcode}${suffix}`
+  }
+
+  if (typeof record.status === 'string' && /^(failed|error)$/i.test(record.status)) {
+    return `status ${record.status}${suffix}`
+  }
+}
+
 export function selectReminderBot<T extends BotLike>(bots: T[]) {
   const activeBots = bots.filter((bot) => bot.isActive !== false && typeof bot.sendMessage === 'function')
   return activeBots.find((bot) => bot.platform === 'qq') || activeBots[0]

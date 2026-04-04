@@ -15,6 +15,14 @@ export interface ImageConfig {
   allowedExtensions: string[]
 }
 
+export interface EmojiLikeConfig {
+  enabled: boolean
+  onebotUrl: string
+  onebotToken?: string
+  emojiIds: number[]
+  delayMs: number
+}
+
 export interface BehaviorConfig {
   sendOnStartup: boolean
   dedupeWindowSeconds: number
@@ -25,6 +33,7 @@ export interface Config {
   schedule: ScheduleConfig
   message: MessageConfig
   image: ImageConfig
+  emojiLike: EmojiLikeConfig
   behavior: BehaviorConfig
 }
 
@@ -35,6 +44,7 @@ export interface NormalizedConfig {
   intervalMinutes: number[]
   message: MessageConfig
   image: ImageConfig & { allowedExtensions: string[] }
+  emojiLike: EmojiLikeConfig
   behavior: BehaviorConfig
 }
 
