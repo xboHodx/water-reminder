@@ -172,6 +172,22 @@ test('apply warns and skips emoji likes when bot.internal._request is unavailabl
   )
 })
 
+test('apply warns once per trigger when bot.internal._request is unavailable', async () => {
+  const { ctx, warnings, ready } = createContext()
+  delete ctx.bots[0].internal
+
+  apply(ctx as any, {
+    ...baseConfig(),
+    enabledGroups: ['123456789', '987654321'],
+  } as any)
+  await ready()
+
+  assert.equal(
+    warnings.filter((message) => message.includes('does not support bot.internal._request')).length,
+    1,
+  )
+})
+
 test('apply skips OneBot requests when emoji-like is disabled or misconfigured', async () => {
   const cases = [
     {

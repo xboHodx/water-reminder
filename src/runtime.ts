@@ -121,5 +121,5 @@ export function getEmojiLikeFailure(response: unknown) {
 
 export function selectReminderBot<T extends BotLike>(bots: T[]) {
   const activeBots = bots.filter((bot) => bot.isActive !== false && typeof bot.sendMessage === 'function')
-  return activeBots.find((bot) => bot.platform === 'qq') || activeBots[0]
+  return activeBots.find((bot) => bot.platform === 'onebot') || activeBots[0]
 }

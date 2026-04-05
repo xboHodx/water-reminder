@@ -130,6 +130,74 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
     }
   }
 
+  async function buildReminderContent() {
+    const text = pickMessage(messagePool)
+    const imagePath = imageFiles.length
+      ? imageFiles[Math.floor(Math.random() * imageFiles.length)]
+      : undefined
+    const payload = buildPayload(text, imagePath)
+    return buildMessageContent(payload)
+  }
+
+  async function sendReminderToGroup(bot: ReturnType<typeof selectReminderBot>, groupId: string, content: Awaited<ReturnType<typeof buildReminderContent>>, triggerLabel: string) {
+    try {
+      const sendResult = await bot.sendMessage(groupId, content)
+      return extractMessageIds(sendResult).filter((messageId) => shouldApplyEmojiLike({
+        enabled: config.emojiLike.enabled,
+        emojiIds: config.emojiLike.emojiIds,
+        messageId,
+      }))
+    } catch (error) {
+      logger.warn(`failed to send ${triggerLabel} reminder to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
+      return []
+    }
+  }
+
+  async function applyEmojiLikes(
+    triggerLabel: string,
+    groupId: string,
+    messageIds: string[],
+    requestEmojiLike: ReturnType<typeof getEmojiLikeRequester>,
+    emojiLikeSupportWarned: { value: boolean },
+  ) {
+    if (!messageIds.length) return
+
+    if (!requestEmojiLike) {
+      if (!emojiLikeSupportWarned.value) {
+        emojiLikeSupportWarned.value = true
+        logger.warn(`skip emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')}: selected bot does not support bot.internal._request`)
+      }
+      return
+    }
+
+    try {
+      if (config.emojiLike.delayMs > 0) {
+        await ctx.sleep(config.emojiLike.delayMs)
+      }
+
+      for (const messageId of messageIds) {
+        for (const emojiId of config.emojiLike.emojiIds) {
+          try {
+            const response = await requestEmojiLike(
+              'set_msg_emoji_like',
+              buildEmojiLikeRequest(messageId, emojiId),
+            )
+            const failure = getEmojiLikeFailure(response)
+            if (failure) {
+              logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${failure}`)
+              continue
+            }
+            logger.info(`applied emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}`)
+          } catch (error) {
+            logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`failed to apply emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   async function sendReminder(triggerLabel: string) {
     if (!groups.length) {
       logger.warn('skip reminder because no enabledGroups are configured')
@@ -149,64 +217,13 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
       return
     }
 
-    const text = pickMessage(messagePool)
-    const imagePath = imageFiles.length
-      ? imageFiles[Math.floor(Math.random() * imageFiles.length)]
-      : undefined
-    const payload = buildPayload(text, imagePath)
+    const content = await buildReminderContent()
+    const requestEmojiLike = getEmojiLikeRequester(bot)
+    const emojiLikeSupportWarned = { value: false }
+
     for (const groupId of groups) {
-      let sendResult: unknown
-
-      try {
-        const content = await buildMessageContent(payload)
-        sendResult = await bot.sendMessage(groupId, content)
-      } catch (error) {
-        logger.warn(`failed to send ${triggerLabel} reminder to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
-        continue
-      }
-
-      const messageIds = extractMessageIds(sendResult).filter((messageId) => shouldApplyEmojiLike({
-        enabled: config.emojiLike.enabled,
-        emojiIds: config.emojiLike.emojiIds,
-        messageId,
-      }))
-
-      if (!messageIds.length) {
-        continue
-      }
-
-      const requestEmojiLike = getEmojiLikeRequester(bot)
-      if (!requestEmojiLike) {
-        logger.warn(`skip emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')} to ${groupId}: selected bot does not support bot.internal._request`)
-        continue
-      }
-
-      try {
-        if (config.emojiLike.delayMs > 0) {
-          await ctx.sleep(config.emojiLike.delayMs)
-        }
-
-        for (const messageId of messageIds) {
-          for (const emojiId of config.emojiLike.emojiIds) {
-            try {
-              const response = await requestEmojiLike(
-                'set_msg_emoji_like',
-                buildEmojiLikeRequest(messageId, emojiId),
-              )
-              const failure = getEmojiLikeFailure(response)
-              if (failure) {
-                logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${failure}`)
-                continue
-              }
-              logger.info(`applied emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}`)
-            } catch (error) {
-              logger.warn(`failed to apply emoji like ${emojiId} for ${triggerLabel} message ${messageId} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
-            }
-          }
-        }
-      } catch (error) {
-        logger.warn(`failed to apply emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')} to ${groupId}: ${error instanceof Error ? error.message : String(error)}`)
-      }
+      const messageIds = await sendReminderToGroup(bot, groupId, content, triggerLabel)
+      await applyEmojiLikes(triggerLabel, groupId, messageIds, requestEmojiLike, emojiLikeSupportWarned)
     }
   }
 
