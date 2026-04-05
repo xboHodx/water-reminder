@@ -6,6 +6,7 @@ QQ 群喝水提醒插件，支持：
 - 每天固定时刻提醒
 - Cron 表达式提醒
 - 固定间隔提醒
+- 每天循环的允许提醒时间段
 - 内置文案与自定义文案混用
 - 本地目录随机图片
 - 图片功能独立开关
@@ -30,6 +31,7 @@ QQ 群喝水提醒插件，支持：
 
 - `intervalMinutes` 不依赖额外插件
 - `dailyTimes` 和 `cronExprs` 依赖 `ctx.cron()`
+- `activeTimeRanges` 仅限制 `intervalMinutes`
 
 如果当前 Koishi 环境没有启用 cron 服务，插件不会崩溃，但会跳过 `dailyTimes` 和 `cronExprs` 并打印 warning。
 
@@ -50,6 +52,9 @@ plugins:
         - "0 12 * * 1-5"
       intervalMinutes:
         - 120
+      activeTimeRanges:
+        - "09:00-12:00"
+        - "14:00-18:00"
     message:
       mode: merge
       customMessages:
@@ -86,6 +91,14 @@ data/water-reminder-images/cute/set-a/3.webp
 - `builtin`: 仅使用内置提醒文案
 - `custom`: 仅使用自定义文案；如果为空则退回内置文案
 - `merge`: 合并内置文案和自定义文案后随机发送
+
+## 触发优先级
+
+- `dailyTimes` / `cronExprs` 优先级最高，到点就发送，不受 `activeTimeRanges` 限制
+- `activeTimeRanges` 只负责限制 `intervalMinutes` 是否允许触发
+- `intervalMinutes` 优先级最低，触发时必须落在任一允许时间段内
+
+`activeTimeRanges` 使用 `HH:mm-HH:mm` 格式，支持多个时间段，也支持跨天配置，例如 `22:00-02:00`。
 
 ## 验证建议
 

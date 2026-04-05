@@ -3,7 +3,13 @@ import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { DEFAULT_IMAGE_EXTENSIONS } from './constants'
-import { expandDailyTimes, normalizeExtensions, normalizeIntervalMinutes } from './config'
+import {
+  expandDailyTimes,
+  isMinuteInActiveTimeRanges,
+  normalizeActiveTimeRanges,
+  normalizeExtensions,
+  normalizeIntervalMinutes,
+} from './config'
 import { collectImageFiles, filterImageFiles, getImageMimeType } from './images'
 import { buildMessagePool, pickMessage } from './messages'
 import {
@@ -38,6 +44,9 @@ export const Config: Schema<WaterReminderConfig> = Schema.object({
       .default([]),
     intervalMinutes: Schema.array(Schema.number().required())
       .description('按固定分钟间隔提醒。')
+      .default([]),
+    activeTimeRanges: Schema.array(Schema.string().required())
+      .description('仅允许 intervalMinutes 在这些时间段内触发，格式为 HH:mm-HH:mm。')
       .default([]),
   }).description('定时触发配置。'),
   message: Schema.object({
@@ -105,6 +114,7 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
   const dailyCronExprs = expandDailyTimes(config.schedule.dailyTimes)
   const cronExprs = buildCronJobs(dailyCronExprs, config.schedule.cronExprs.map((item) => item.trim()).filter(Boolean))
   const intervalMinutes = normalizeIntervalMinutes(config.schedule.intervalMinutes)
+  const activeTimeRanges = normalizeActiveTimeRanges(config.schedule.activeTimeRanges ?? [])
   const allowedExtensions = normalizeExtensions(config.image.allowedExtensions)
   const messagePool = buildMessagePool(config.message)
   const imageDirectory = resolve(config.image.directory)
@@ -222,6 +232,12 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
 
     for (const interval of intervalMinutes) {
       ctx.setInterval(() => {
+        const now = new Date()
+        const minuteOfDay = now.getHours() * 60 + now.getMinutes()
+        if (!isMinuteInActiveTimeRanges(activeTimeRanges, minuteOfDay)) {
+          logger.debug(`skip interval:${interval} reminder because it is outside active time ranges`)
+          return
+        }
         void sendReminder(`interval:${interval}`)
       }, interval * 60 * 1000)
     }

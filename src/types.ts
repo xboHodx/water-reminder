@@ -2,11 +2,17 @@ export interface ScheduleConfig {
   dailyTimes: string[]
   cronExprs: string[]
   intervalMinutes: number[]
+  activeTimeRanges: string[]
 }
 
 export interface MessageConfig {
   mode: 'builtin' | 'custom' | 'merge'
   customMessages: string[]
+}
+
+export interface ActiveTimeRange {
+  startMinute: number
+  endMinute: number
 }
 
 export interface ImageConfig {
@@ -42,6 +48,7 @@ export interface NormalizedConfig {
   dailyCronExprs: string[]
   cronExprs: string[]
   intervalMinutes: number[]
+  activeTimeRanges: ActiveTimeRange[]
   message: MessageConfig
   image: ImageConfig & { allowedExtensions: string[] }
   emojiLike: EmojiLikeConfig
