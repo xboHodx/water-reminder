@@ -8,7 +8,7 @@ type ReadyCallback = () => Promise<void> | void
 function createContext() {
   const infos: string[] = []
   const warnings: string[] = []
-  const posts: Array<{ url: string, body: unknown, options: unknown }> = []
+  const requests: Array<{ action: string, params: Record<string, unknown> }> = []
   let ready: ReadyCallback | undefined
 
   const ctx = {
@@ -17,6 +17,12 @@ function createContext() {
         platform: 'qq',
         isActive: true,
         sendMessage: async () => ['123', '456'],
+        internal: {
+          async _request(action: string, params: Record<string, unknown>) {
+            requests.push({ action, params })
+            return { retcode: 0 }
+          },
+        },
       },
     ],
     logger() {
@@ -33,12 +39,6 @@ function createContext() {
     on(event: string, callback: ReadyCallback) {
       if (event === 'ready') ready = callback
     },
-    http: {
-      post: async (url: string, body: unknown, options: unknown) => {
-        posts.push({ url, body, options })
-        return { retcode: 0 }
-      },
-    },
     sleep: async () => {},
     setInterval() {},
   }
@@ -47,7 +47,7 @@ function createContext() {
     ctx,
     infos,
     warnings,
-    posts,
+    requests,
     ready: async () => {
       assert.ok(ready, 'ready callback should be registered')
       await ready?.()
@@ -74,8 +74,6 @@ function baseConfig() {
     },
     emojiLike: {
       enabled: true,
-      onebotUrl: 'http://127.0.0.1:3000',
-      onebotToken: '',
       emojiIds: [76, 77],
       delayMs: 0,
     },
@@ -86,20 +84,20 @@ function baseConfig() {
   } as const
 }
 
-test('apply posts emoji likes for every sendMessage result and every emoji id', async () => {
-  const { ctx, infos, posts, ready } = createContext()
+test('apply requests emoji likes through bot.internal for every sendMessage result and every emoji id', async () => {
+  const { ctx, infos, requests, ready } = createContext()
 
   apply(ctx as any, baseConfig() as any)
   await ready()
 
-  assert.equal(posts.length, 4)
+  assert.equal(requests.length, 4)
   assert.deepEqual(
-    posts.map((entry) => entry.body),
+    requests,
     [
-      { message_id: 123, emoji_id: 76 },
-      { message_id: 123, emoji_id: 77 },
-      { message_id: 456, emoji_id: 76 },
-      { message_id: 456, emoji_id: 77 },
+      { action: 'set_msg_emoji_like', params: { message_id: 123, emoji_id: 76 } },
+      { action: 'set_msg_emoji_like', params: { message_id: 123, emoji_id: 77 } },
+      { action: 'set_msg_emoji_like', params: { message_id: 456, emoji_id: 76 } },
+      { action: 'set_msg_emoji_like', params: { message_id: 456, emoji_id: 77 } },
     ],
   )
   assert.ok(
@@ -108,9 +106,9 @@ test('apply posts emoji likes for every sendMessage result and every emoji id', 
   )
 })
 
-test('apply warns when OneBot HTTP returns a logical failure payload', async () => {
+test('apply warns when bot.internal returns a logical failure payload', async () => {
   const { ctx, warnings, ready } = createContext()
-  ctx.http.post = async () => ({ retcode: 1200 })
+  ctx.bots[0].internal._request = async () => ({ retcode: 1200 })
 
   apply(ctx as any, baseConfig() as any)
   await ready()
@@ -121,9 +119,9 @@ test('apply warns when OneBot HTTP returns a logical failure payload', async () 
   )
 })
 
-test('apply warns when OneBot HTTP returns a failed status payload', async () => {
+test('apply warns when bot.internal returns a failed status payload', async () => {
   const { ctx, warnings, ready } = createContext()
-  ctx.http.post = async () => ({ status: 'failed', message: 'not allowed' })
+  ctx.bots[0].internal._request = async () => ({ status: 'failed', message: 'not allowed' })
 
   apply(ctx as any, baseConfig() as any)
   await ready()
@@ -160,6 +158,20 @@ test('apply warns about failed emoji-like processing when ctx.sleep throws', asy
   )
 })
 
+test('apply warns and skips emoji likes when bot.internal._request is unavailable', async () => {
+  const { ctx, warnings, requests, ready } = createContext()
+  delete ctx.bots[0].internal
+
+  apply(ctx as any, baseConfig() as any)
+  await ready()
+
+  assert.equal(requests.length, 0)
+  assert.ok(
+    warnings.some((message) => message.includes('does not support bot.internal._request')),
+    'expected a missing internal requester warning',
+  )
+})
+
 test('apply skips OneBot requests when emoji-like is disabled or misconfigured', async () => {
   const cases = [
     {
@@ -170,19 +182,15 @@ test('apply skips OneBot requests when emoji-like is disabled or misconfigured',
       name: 'no emoji ids',
       emojiLike: { ...baseConfig().emojiLike, emojiIds: [] },
     },
-    {
-      name: 'blank onebotUrl',
-      emojiLike: { ...baseConfig().emojiLike, onebotUrl: '   ' },
-    },
   ]
 
   for (const item of cases) {
-    const { ctx, posts, ready } = createContext()
+    const { ctx, requests, ready } = createContext()
     apply(ctx as any, {
       ...baseConfig(),
       emojiLike: item.emojiLike,
     } as any)
     await ready()
-    assert.equal(posts.length, 0, `expected no OneBot posts for ${item.name}`)
+    assert.equal(requests.length, 0, `expected no OneBot requests for ${item.name}`)
   }
 })

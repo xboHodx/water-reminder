@@ -9,13 +9,14 @@ QQ 群喝水提醒插件，支持：
 - 每天循环的允许提醒时间段
 - 内置文案与自定义文案混用
 - 本地目录随机图片
+- 发送成功后自动贴表情
 - 图片功能独立开关
 
 ## 适用范围
 
 - 仅支持普通 QQ 群，即 Koishi QQ 适配器中的 `platform: qq`
 - 不支持 QQ 频道
-- 不支持 reaction
+- 贴表情依赖所用 OneBot 适配器在 bot 上提供 `internal._request()`
 
 ## 重要说明
 
@@ -69,6 +70,11 @@ plugins:
         - png
         - gif
         - webp
+    emojiLike:
+      enabled: true
+      emojiIds:
+        - 76
+      delayMs: 300
     behavior:
       sendOnStartup: false
       dedupeWindowSeconds: 60
@@ -105,4 +111,5 @@ data/water-reminder-images/cute/set-a/3.webp
 1. 先只配置一个测试群。
 2. 先关闭图片功能，确认文字提醒能正常发送。
 3. 再开启 `image.enabled`，向目录放入几张图片验证随机发图。
-4. 最后再启用 `dailyTimes` / `cronExprs`，确认 cron 服务可用。
+4. 如需贴表情，再开启 `emojiLike.enabled`，确认当前 OneBot 适配器支持 `bot.internal._request('set_msg_emoji_like', ...)`。
+5. 最后再启用 `dailyTimes` / `cronExprs`，确认 cron 服务可用。

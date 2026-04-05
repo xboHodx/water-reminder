@@ -23,8 +23,6 @@ export interface ImageConfig {
 
 export interface EmojiLikeConfig {
   enabled: boolean
-  onebotUrl: string
-  onebotToken?: string
   emojiIds: number[]
   delayMs: number
 }

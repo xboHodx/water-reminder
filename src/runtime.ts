@@ -4,6 +4,9 @@ interface BotLike {
   platform?: string
   isActive?: boolean
   sendMessage?: (...args: any[]) => any
+  internal?: {
+    _request?: (action: string, params: Record<string, unknown>) => Promise<unknown>
+  }
 }
 
 export function buildCronJobs(dailyCronExprs: string[], rawCronExprs: string[]) {
@@ -78,26 +81,19 @@ export function buildEmojiLikeRequest(messageId: string, emojiId: number) {
   }
 }
 
-export function buildEmojiLikeHeaders(token?: string) {
-  return token
-    ? {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      }
-    : {
-        'Content-Type': 'application/json',
-      }
+export function getEmojiLikeRequester(bot: BotLike) {
+  const request = bot.internal?._request
+  if (typeof request !== 'function') return
+  return request.bind(bot.internal)
 }
 
 export function shouldApplyEmojiLike(input: {
   enabled: boolean
-  onebotUrl: string
   emojiIds: number[]
   messageId?: string
 }) {
   const normalizedMessageId = input.messageId && parseEmojiLikeMessageId(input.messageId)
   return input.enabled
-    && !!input.onebotUrl.trim()
     && input.emojiIds.length > 0
     && !!normalizedMessageId
 }

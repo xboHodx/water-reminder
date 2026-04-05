@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 
 import {
   buildCronJobs,
-  buildEmojiLikeHeaders,
   buildEmojiLikeRequest,
   buildPayload,
+  getEmojiLikeRequester,
   selectReminderBot,
   shouldApplyEmojiLike,
   shouldSkipByDedupe,
@@ -45,21 +45,28 @@ test('buildEmojiLikeRequest throws for invalid message ids', () => {
   assert.throws(() => buildEmojiLikeRequest('abc', 76), /invalid emoji-like message id/i)
 })
 
-test('buildEmojiLikeHeaders adds bearer token only when configured', () => {
-  assert.deepEqual(buildEmojiLikeHeaders(), {
-    'Content-Type': 'application/json',
+test('getEmojiLikeRequester returns bot.internal._request when available', async () => {
+  const calls: Array<{ action: string, params: Record<string, unknown> }> = []
+  const requester = getEmojiLikeRequester({
+    internal: {
+      async _request(action: string, params: Record<string, unknown>) {
+        calls.push({ action, params })
+        return { retcode: 0 }
+      },
+    },
   })
-  assert.deepEqual(buildEmojiLikeHeaders('secret'), {
-    'Content-Type': 'application/json',
-    Authorization: 'Bearer secret',
-  })
+
+  assert.ok(requester)
+  await requester?.('set_msg_emoji_like', { message_id: 12345, emoji_id: 76 })
+  assert.deepEqual(calls, [
+    { action: 'set_msg_emoji_like', params: { message_id: 12345, emoji_id: 76 } },
+  ])
 })
 
 test('shouldApplyEmojiLike returns true when all emoji-like conditions are met', () => {
   assert.equal(
     shouldApplyEmojiLike({
       enabled: true,
-      onebotUrl: 'http://127.0.0.1:3000',
       emojiIds: [76],
       messageId: '12345',
     }),
@@ -69,7 +76,6 @@ test('shouldApplyEmojiLike returns true when all emoji-like conditions are met',
   assert.equal(
     shouldApplyEmojiLike({
       enabled: false,
-      onebotUrl: 'http://127.0.0.1:3000',
       emojiIds: [76],
       messageId: '12345',
     }),
@@ -80,7 +86,6 @@ test('shouldApplyEmojiLike returns true when all emoji-like conditions are met',
 test('shouldApplyEmojiLike returns false when message id is missing', () => {
   assert.equal(shouldApplyEmojiLike({
     enabled: true,
-    onebotUrl: 'http://127.0.0.1:3000',
     emojiIds: [76],
   }), false)
 })
@@ -88,7 +93,6 @@ test('shouldApplyEmojiLike returns false when message id is missing', () => {
 test('shouldApplyEmojiLike returns false when message id is non-numeric', () => {
   assert.equal(shouldApplyEmojiLike({
     enabled: true,
-    onebotUrl: 'http://127.0.0.1:3000',
     emojiIds: [76],
     messageId: 'abc',
   }), false)

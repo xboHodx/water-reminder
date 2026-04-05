@@ -14,11 +14,11 @@ import { collectImageFiles, filterImageFiles, getImageMimeType } from './images'
 import { buildMessagePool, pickMessage } from './messages'
 import {
   buildCronJobs,
-  buildEmojiLikeHeaders,
   buildEmojiLikeRequest,
   buildPayload,
   extractMessageIds,
   getEmojiLikeFailure,
+  getEmojiLikeRequester,
   selectReminderBot,
   shouldApplyEmojiLike,
   shouldSkipByDedupe,
@@ -72,12 +72,6 @@ export const Config: Schema<WaterReminderConfig> = Schema.object({
     enabled: Schema.boolean()
       .description('是否在提醒消息发送后自动贴表情。')
       .default(false),
-    onebotUrl: Schema.string()
-      .description('OneBot HTTP 地址，例如 http://127.0.0.1:3000。')
-      .default('http://127.0.0.1:3000'),
-    onebotToken: Schema.string()
-      .description('OneBot HTTP Token。')
-      .default(''),
     emojiIds: Schema.array(Schema.number().required())
       .description('要贴上的 emoji_id 列表。')
       .default([]),
@@ -173,7 +167,6 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
 
       const messageIds = extractMessageIds(sendResult).filter((messageId) => shouldApplyEmojiLike({
         enabled: config.emojiLike.enabled,
-        onebotUrl: config.emojiLike.onebotUrl,
         emojiIds: config.emojiLike.emojiIds,
         messageId,
       }))
@@ -182,20 +175,23 @@ export function apply(ctx: Context, config: WaterReminderConfig) {
         continue
       }
 
+      const requestEmojiLike = getEmojiLikeRequester(bot)
+      if (!requestEmojiLike) {
+        logger.warn(`skip emoji like for ${triggerLabel} message(s) ${messageIds.join(', ')} to ${groupId}: selected bot does not support bot.internal._request`)
+        continue
+      }
+
       try {
         if (config.emojiLike.delayMs > 0) {
           await ctx.sleep(config.emojiLike.delayMs)
         }
 
-        const onebotUrl = `${config.emojiLike.onebotUrl.replace(/\/$/, '')}/set_msg_emoji_like`
-        const headers = buildEmojiLikeHeaders(config.emojiLike.onebotToken || undefined)
         for (const messageId of messageIds) {
           for (const emojiId of config.emojiLike.emojiIds) {
             try {
-              const response = await ctx.http.post(
-                onebotUrl,
+              const response = await requestEmojiLike(
+                'set_msg_emoji_like',
                 buildEmojiLikeRequest(messageId, emojiId),
-                { headers },
               )
               const failure = getEmojiLikeFailure(response)
               if (failure) {
