@@ -62,7 +62,7 @@ export const Config: Schema<WaterReminderConfig> = Schema.object({
       .description('是否启用随机图片。')
       .default(false),
     directory: Schema.string()
-      .description('随机图片目录，相对路径会以 koishi-app 运行目录解析。')
+      .description('随机图片目录，相对路径会以 koishi 运行目录解析。')
       .default('data/water-reminder-images'),
     allowedExtensions: Schema.array(Schema.string().required())
       .description('允许发送的图片扩展名。')

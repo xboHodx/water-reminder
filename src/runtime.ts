@@ -9,6 +9,14 @@ interface BotLike {
   }
 }
 
+type ReminderBot = BotLike & {
+  sendMessage: (...args: any[]) => any
+}
+
+function canSendReminder<T extends BotLike>(bot: T): bot is T & ReminderBot {
+  return bot.isActive !== false && typeof bot.sendMessage === 'function'
+}
+
 export function buildCronJobs(dailyCronExprs: string[], rawCronExprs: string[]) {
   return [...new Set([...dailyCronExprs, ...rawCronExprs].filter(Boolean))]
 }
@@ -120,6 +128,6 @@ export function getEmojiLikeFailure(response: unknown) {
 }
 
 export function selectReminderBot<T extends BotLike>(bots: T[]) {
-  const activeBots = bots.filter((bot) => bot.isActive !== false && typeof bot.sendMessage === 'function')
+  const activeBots = bots.filter(canSendReminder)
   return activeBots.find((bot) => bot.platform === 'onebot') || activeBots[0]
 }
