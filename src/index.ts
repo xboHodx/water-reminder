@@ -24,6 +24,7 @@ import {
   shouldSkipByDedupe,
 } from './runtime'
 import type { Config as WaterReminderConfig } from './types'
+export const inject = { optional: ['cron'] }
 
 type CronContext = Context & {
   cron?: (expr: string, callback: () => void | Promise<void>) => (() => void) | void
